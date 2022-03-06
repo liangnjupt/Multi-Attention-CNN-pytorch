@@ -1,4 +1,4 @@
-# MACNN-pytorch
+# Multi-Attention-CNN-pytorch （MACNN）  
 This is unofficial pytorch verision of Multi-Attention CNN
 ## Requirements
 python 1.8  
