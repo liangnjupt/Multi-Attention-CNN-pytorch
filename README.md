@@ -11,7 +11,7 @@ scikit-learn
 scipy  
 spams  
 ## Results
-
+![Aaron Swartz](https://github.com/LiAng199523/MACNN-pytorch/blob/main/Figure_1.png)  
 ## Reference
 H. Zheng, J. Fu, T. Mei and J. Luo, "Learning Multi-attention Convolutional Neural Network for Fine-Grained Image Recognition," 2017 IEEE International Conference on Computer Vision (ICCV), 2017, pp. 5219-5227, doi: 10.1109/ICCV.2017.557.  
 https://github.com/aftercloud/MA-CNN  
