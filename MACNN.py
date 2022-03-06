@@ -19,7 +19,7 @@ dataset_group = parser.add_argument_group(title='dataset options')
 dataset_group.add_argument("--dataset_name", type=str, default="CUB", help="dataset name")
 dataset_group.add_argument("--dataset_path", type=str, default="/home/liang/github/Dataset/bird_torch",
                            help="dataset path")
-dataset_group.add_argument("--batch_size", type=int, default=8, help="batch size")
+dataset_group.add_argument("--batch_size", type=int, default=16, help="batch size")
 dataset_group.add_argument("--image_size", type=int, default=224, help="image_size")
 dataset_group.add_argument("--nthreads", type=str, default=8, help="nthreads")
 args = parser.parse_args()
@@ -42,7 +42,7 @@ class DisLoss(nn.Module):
         cy = num // h
         maps = self.get_maps(h, cx, cy)
         maps = torch.from_numpy(maps).to(x.device)
-
+        # maps=F.normalize(maps,dim=-1,p=2)
         part = x * maps
         loss = torch.sum(part) / b
         return loss
@@ -77,10 +77,10 @@ class DivLoss(nn.Module):
         x3=x[2]
         x4=x[3]
 
-        mgr = 0.
-        for data in [x1,x2,x3,x4]:
-            mgr += data.mean()
-        mgr /= len(x)
+        # mgr = 0.
+        # for data in [x1,x2,x3,x4]:
+        #     mgr += data.mean()
+        # mgr /= len(x)
 
         x1 = x1.view(x1.size(0), -1)
         x2 = x2.view(x2.size(0), -1)
@@ -94,10 +94,10 @@ class DivLoss(nn.Module):
         t2, _ = torch.max(tmp2, dim=0)
         t3, _ = torch.max(tmp3, dim=0)
         t4, _ = torch.max(tmp4, dim=0)
-        t1 = t1 - 0.01*mgr
-        t2 = t2 - 0.01*mgr
-        t3 = t3 - 0.01*mgr
-        t4 = t4 - 0.01*mgr
+        # t1 = t1 - 0.01*mgr
+        # t2 = t2 - 0.01*mgr
+        # t3 = t3 - 0.01*mgr
+        # t4 = t4 - 0.01*mgr
 
         loss = (torch.sum(x1 * t1) + \
                 torch.sum(x2 * t2) + \
@@ -156,10 +156,10 @@ class MACNN(nn.Module):
 
         self.cnnfc=nn.Linear(self.feat_dims, 200)
 
-        # self.fc1 = nn.Linear(self.feat_dims, 200)
-        # self.fc2 = nn.Linear(self.feat_dims, 200)
-        # self.fc3 = nn.Linear(self.feat_dims, 200)
-        # self.fc4 = nn.Linear(self.feat_dims, 200)
+        self.fc1 = nn.Linear(self.feat_dims, 200)
+        self.fc2 = nn.Linear(self.feat_dims, 200)
+        self.fc3 = nn.Linear(self.feat_dims, 200)
+        self.fc4 = nn.Linear(self.feat_dims, 200)
         self.fcall=nn.Linear(5*self.feat_dims,200)
 
     def forward(self,x):
@@ -173,10 +173,10 @@ class MACNN(nn.Module):
         P4, M4, y4 = self.se4(feat_maps.detach())
 
 
-        # pred1 = self.fc1(P1.flatten(1))
-        # pred2 = self.fc2(P2.flatten(1))
-        # pred3 = self.fc3(P3.flatten(1))
-        # pred4 = self.fc4(P4.flatten(1))
+        pred1 = self.fc1(P1.flatten(1))
+        pred2 = self.fc2(P2.flatten(1))
+        pred3 = self.fc3(P3.flatten(1))
+        pred4 = self.fc4(P4.flatten(1))
         P=torch.cat([P1,P2,P3,P4,self.pool(feat_maps)],dim=1)
         pred=self.fcall(P.flatten(1))
 
@@ -184,7 +184,7 @@ class MACNN(nn.Module):
                [P1,P2,P3,P4],\
                [M1,M2,M3,M4],\
                [y1,y2,y3,y4],\
-               [pred]
+               [pred1,pred2,pred3,pred4,pred]
 
 def seed_torch(seed=42):
     random.seed(seed)
@@ -448,10 +448,10 @@ def train_attnandcnn():
                          {"params": model.se2.parameters()},
                          {"params": model.se3.parameters()},
                          {"params": model.se4.parameters()},
-                         # {"params": model.fc1.parameters(),"lr":0.001},
-                         # {"params": model.fc2.parameters(),"lr":0.001},
-                         # {"params": model.fc3.parameters(),"lr":0.001},
-                         # {"params": model.fc4.parameters(),"lr":0.001},
+                         {"params": model.fc1.parameters(),"lr":0.001},
+                         {"params": model.fc2.parameters(),"lr":0.001},
+                         {"params": model.fc3.parameters(),"lr":0.001},
+                         {"params": model.fc4.parameters(),"lr":0.001},
                          {"params": model.fcall.parameters(),"lr":0.001},
                          ],
                         momentum=0.9,
@@ -463,7 +463,7 @@ def train_attnandcnn():
                 "div":DivLoss(),
                 "dis":DisLoss()}
 
-    for epoch in range(10):
+    for epoch in range(30):
         print("epoch:{}".format(epoch))
         train_loss = 0.0
         val_loss = 0.0
@@ -477,14 +477,16 @@ def train_attnandcnn():
                 label = datalabel[1].cuda()
                 _, _, _, Mlist, _, predlist = model(data)
 
-                clsloss = criterion["cls"](predlist[0], label)
+                clsloss = (criterion["cls"](predlist[0], label)+criterion["cls"](predlist[1], label)\
+                          +criterion["cls"](predlist[2], label)+criterion["cls"](predlist[3], label)\
+                          +criterion["cls"](predlist[4], label))/5
                 divloss=criterion["div"](Mlist)
                 disloss=criterion["dis"](Mlist[0])+criterion["dis"](Mlist[1])+criterion["dis"](Mlist[2])+criterion["dis"](Mlist[3])
-                loss=100*divloss+disloss+clsloss
+                loss=20*divloss+disloss+clsloss
                 if idx % 10 == 0:
                     print("idx:{},divloss:{:.4f},disloss:{:.4f},clsloss:{:.4f}".format(idx, divloss.item(),disloss.item(),clsloss.item()))
 
-                pred = predlist[0].argmax(dim=1)
+                pred = predlist[-1].argmax(dim=1)
                 num_corrects_train += torch.eq(pred, label).float().sum().item()
                 train_loss += float(loss.item())
 
@@ -504,15 +506,17 @@ def train_attnandcnn():
                     label = datalabel[1].cuda()
                     _, _, _, Mlist, _, predlist = model(data)
 
-                    clsloss=criterion["cls"](predlist[0],label)
+                    clsloss = (criterion["cls"](predlist[0], label) + criterion["cls"](predlist[1], label) \
+                               + criterion["cls"](predlist[2], label) + criterion["cls"](predlist[3], label) \
+                               + criterion["cls"](predlist[4], label)) / 5
                     divloss = criterion["div"](Mlist)
                     disloss = criterion["dis"](Mlist[0]) + criterion["dis"](Mlist[1]) + criterion["dis"](Mlist[2]) + \
                               criterion["dis"](Mlist[3])
-                    loss = 100*divloss+disloss+clsloss
+                    loss = 20*divloss+disloss+clsloss
                     if idx % 10 == 0:
                         print("idx:{},divloss:{:.4f},disloss:{:.4f},clsloss:{:.4f}".format(idx, divloss.item(),disloss.item(),clsloss.item()))
     
-                    pred = predlist[0].argmax(dim=1)
+                    pred = predlist[-1].argmax(dim=1)
                     num_corrects_val += torch.eq(pred, label).float().sum().item()
                     val_loss += float(loss.item())
             print("val,val_loss:{},val_accuracy:{}".format(train_loss / len(dataloader_val),
@@ -530,25 +534,31 @@ if __name__=="__main__":
 
     # step1 update model with Lcls
     train_cnn()
-    torch.save(model.state_dict(),"MACNN2_output/cnn.pkl")
+    torch.save(model.state_dict(),"MACNN2_output/cnn1.pkl")
 
     # step2--hand-crafted clustering
-    model.load_state_dict(torch.load("MACNN2_output/cnn.pkl"))
+    state_dict=torch.load("MACNN2_output/cnn1.pkl")
+    modelstate=model.state_dict()
+    newstate={k:v for k,v in modelstate.items() if k in state_dict.keys()}
+    modelstate.update(newstate)
+    model.load_state_dict(modelstate)
+
+
     indicators=getpos()
-    np.save("MACNN2_output/indicators.npy",indicators)
-    indicators = np.load("MACNN2_output/indicators.npy")
+    np.save("MACNN2_output/indicators1.npy",indicators)
+    indicators = np.load("MACNN2_output/indicators1.npy")
     indicators_list = clustering(indicators)
 
     #step3 pretrain attention module
     pretrain_attn()
-    torch.save(model.state_dict(), "MACNN2_output/pretrain_attn.pkl")
+    torch.save(model.state_dict(), "MACNN2_output/pretrain_attn1.pkl")
 
-    model.load_state_dict(torch.load("MACNN2_output/pretrain_attn.pkl"))
+    model.load_state_dict(torch.load("MACNN2_output/pretrain_attn1.pkl"))
     # vis()
 
     #step4 fine-tune attention module and CNN with Lcls and Lcng
     train_attnandcnn()
 
-    torch.save(model.state_dict(), "MACNN2_output/attnandcnn.pkl")
-    model.load_state_dict(torch.load("MACNN2_output/attnandcnn.pkl"))
+    torch.save(model.state_dict(), "MACNN2_output/attnandcnn1.pkl")
+    model.load_state_dict(torch.load("MACNN2_output/attnandcnn1.pkl"))
     vis()
