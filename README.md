@@ -7,6 +7,6 @@ torchvision
 numpy  
 cv2  
 PIL  
-scikit-learn
-scipy
-spams
+scikit-learn  
+scipy  
+spams  
